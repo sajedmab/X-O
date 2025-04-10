@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لعبة X/O - ولاء وساجد</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f4f4f4;
+            direction: rtl;
+        }
+
+        .header {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: #800080;
+            font-weight: bold;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 100px);
+            grid-template-rows: repeat(3, 100px);
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .cell {
+            width: 100px;
+            height: 100px;
+            background-color: #eee;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2em;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .cell:hover {
+            background-color: #ddd;
+        }
+
+        .message {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+
+        #restartBtn {
+            padding: 10px 20px;
+            font-size: 1em;
+            cursor: pointer;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 4px;
+        }
+
+        #restartBtn:hover {
+            background-color: #0056b3;
+        }
+
+        .playerX {
+            color: blue;
+        }
+
+        .playerO {
+            color: red;
+        }
+
+        .footer {
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">دور ولاء (X)</div>
+    <div class="container">
+        <h1>لعبة X/O</h1>
+        <div class="board">
+            <div class="cell" data-index="0"></div>
+            <div class="cell" data-index="1"></div>
+            <div class="cell" data-index="2"></div>
+            <div class="cell" data-index="3"></div>
+            <div class="cell" data-index="4"></div>
+            <div class="cell" data-index="5"></div>
+            <div class="cell" data-index="6"></div>
+            <div class="cell" data-index="7"></div>
+            <div class="cell" data-index="8"></div>
+        </div>
+        <div class="message"></div>
+        <button id="restartBtn">ابدأ من جديد</button>
+    </div>
+    <div class="footer">طور بواسطة ساجد</div>
+
+    <script>
+        const headerElement = document.querySelector('.header');
+        const cells = document.querySelectorAll('.cell');
+        const messageElement = document.querySelector('.message');
+        const restartButton = document.getElementById('restartBtn');
+        const footerElement = document.querySelector('.footer');
+
+        let board = ['', '', '', '', '', '', '', '', ''];
+        let currentPlayer = 'X';
+        const botPlayer = 'O';
+        const humanPlayerName = 'ولاء';
+        const botPlayerName = 'ساجد';
+        let gameActive = true;
+        const learningRate = 0.1;
+        const explorationRate = 0.1;
+        const memory = new Map();
+        let moveHistory = [];
+
+        const winningConditions = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8],
+            [0, 3, 6], [1, 4, 7], [2, 5, 8],
+            [0, 4, 8], [2, 4, 6]
+        ];
+
+        function updateHeader() {
+            headerElement.textContent = `دور ${currentPlayer === 'X' ? humanPlayerName : botPlayerName} (${currentPlayer})`;
+            headerElement.style.color = currentPlayer === 'X' ? '#800080' : '#333';
+        }
+
+        function handleCellClick(clickedCellEvent) {
+            const clickedCell = clickedCellEvent.target;
+            const clickedCellIndex = parseInt(clickedCell.dataset.index);
+
+            if (board[clickedCellIndex] !== '' || !gameActive || currentPlayer === botPlayer) return;
+
+            board[clickedCellIndex] = currentPlayer;
+            clickedCell.textContent = currentPlayer;
+            clickedCell.classList.add(currentPlayer === 'X' ? 'playerX' : 'playerO');
+
+            checkWin();
+            if (gameActive) {
+                switchPlayer();
+                updateHeader();
+                if (currentPlayer === botPlayer) {
+                    makeBotMove();
+                }
+            }
+        }
+
+        function checkWin() {
+            let winner = null;
+            for (const condition of winningConditions) {
+                const [a, b, c] = condition;
+                if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+                    winner = board[a];
+                    break;
+                }
+            }
+
+            if (winner) {
+                messageElement.textContent = `اللاعب ${winner === 'X' ? humanPlayerName : botPlayerName} فاز!`;
+                gameActive = false;
+                const reward = winner === botPlayer ? 1 : -1;
+                updateMemory(reward);
+                moveHistory = [];
+                return reward;
+            }
+
+            if (!board.includes('')) {
+                messageElement.textContent = 'تعادل!';
+                gameActive = false;
+                updateMemory(0);
+                moveHistory = [];
+                return 0;
+            }
+
+            return null;
+        }
+
+        function switchPlayer() {
+            currentPlayer = currentPlayer === 'X' ? botPlayer : 'X';
+        }
+
+        function getBoardKey(currentBoard) {
+            return currentBoard.join('');
+        }
+
+        function getQValue(boardState) {
+            const key = getBoardKey(boardState);
+            return memory.get(key) || 0.5;
+        }
+
+        function updateQValue(boardState, newQValue) {
+            const key = getBoardKey(boardState);
+            memory.set(key, newQValue);
+        }
+
+        function getEmptyCells() {
+            return board.reduce((acc, val, index) => (val === '' ? [...acc, index] : acc), []);
+        }
+
+        function canWin(brd, player) {
+            for (const condition of winningConditions) {
+                const [a, b, c] = condition;
+                if (brd[a] === player && brd[b] === player && brd[c] === '') return c;
+                if (brd[a] === player && brd[b] === '' && brd[c] === player) return b;
+                if (brd[a] === '' && brd[b] === player && brd[c] === player) return a;
+            }
+            return -1;
+        }
+
+        function makeBotMove() {
+            if (!gameActive || currentPlayer !== botPlayer) return;
+
+            cells.forEach(cell => cell.style.pointerEvents = 'none');
+            headerElement.textContent = `${botPlayerName} يفكر...`;
+            headerElement.style.color = '#333';
+
+            setTimeout(() => {
+                const emptyCells = getEmptyCells();
+                let bestMoveIndex = -1;
+                let bestQValue = -Infinity;
+
+                const winMove = canWin(board, botPlayer);
+                if (winMove !== -1) {
+                    bestMoveIndex = winMove;
+                } else {
+                    const blockMove = canWin(board, 'X');
+                    if (blockMove !== -1) {
+                        bestMoveIndex = blockMove;
+                    } else if (Math.random() < explorationRate) {
+                        bestMoveIndex = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                    } else {
+                        for (const index of emptyCells) {
+                            const nextBoard = [...board];
+                            nextBoard[index] = botPlayer;
+                            const qValue = getQValue(nextBoard);
+                            if (qValue > bestQValue) {
+                                bestQValue = qValue;
+                                bestMoveIndex = index;
+                            }
+                        }
+                    }
+                }
+
+                if (bestMoveIndex !== -1 && gameActive) {
+                    board[bestMoveIndex] = botPlayer;
+                    cells[bestMoveIndex].textContent = botPlayer;
+                    cells[bestMoveIndex].classList.add('playerO');
+                    moveHistory.push([...board]);
+                    checkWin();
+                    if (gameActive) {
+                        switchPlayer();
+                        updateHeader();
+                    }
+                }
+                cells.forEach(cell => cell.style.pointerEvents = 'auto');
+            }, 50);
+        }
+
+        function updateMemory(reward) {
+            for (let i = 0; i < moveHistory.length; i++) {
+                const state = moveHistory[i];
+                let currentQValue = getQValue(state);
+                let temporalReward = 0;
+
+                if (reward === 0) {
+                    temporalReward = 0.01;
+                } else if (reward === 1) {
+                    temporalReward = 0.1 + (i / moveHistory.length) * 0.2;
+                } else if (reward === -1) {
+                    temporalReward = -0.1 - (i / moveHistory.length) * 0.2;
+                }
+
+                const newQValue = currentQValue + learningRate * (temporalReward - currentQValue);
+                updateQValue(state, newQValue);
+            }
+        }
+
+        function restartGame() {
+            board = ['', '', '', '', '', '', '', '', ''];
+            gameActive = true;
+            currentPlayer = 'X';
+            messageElement.textContent = '';
+            cells.forEach(cell => {
+                cell.textContent = '';
+                cell.classList.remove('playerX', 'playerO');
+                cell.style.pointerEvents = 'auto';
+            });
+            updateHeader();
+            moveHistory = [];
+            if (currentPlayer === botPlayer) {
+                makeBotMove();
+            }
+        }
+
+        cells.forEach(cell => cell.addEventListener('click', handleCellClick));
+        restartButton.addEventListener('click', restartGame);
+        updateHeader();
+        footerElement.textContent = `طور بواسطة ${botPlayerName}`;
+
+        // استدعاء makeBotMove() في البداية إذا كان دور البوت أولاً (اختياري)
+        // if (currentPlayer === botPlayer) {
+        //     makeBotMove();
+        // }
+    </script>
+</body>
+</html>
