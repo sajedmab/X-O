@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>لعبة X/O - ولاء وساجد</title>
+    <title>لعبة X/O - ولاء وساجد مع مؤثر صوتي</title>
     <style>
         body {
             font-family: sans-serif;
@@ -91,6 +91,7 @@
     </style>
 </head>
 <body>
+    <audio id="botWinSound" src="laugh.mp3"></audio>
     <div class="header">دور ولاء (X)</div>
     <div class="container">
         <h1>لعبة X/O</h1>
@@ -116,6 +117,7 @@
         const messageElement = document.querySelector('.message');
         const restartButton = document.getElementById('restartBtn');
         const footerElement = document.querySelector('.footer');
+        const botWinSound = document.getElementById('botWinSound');
 
         let board = ['', '', '', '', '', '', '', '', ''];
         let currentPlayer = 'X';
@@ -175,6 +177,9 @@
                 const reward = winner === botPlayer ? 1 : -1;
                 updateMemory(reward);
                 moveHistory = [];
+                if (winner === botPlayer) {
+                    playSound(botWinSound);
+                }
                 return reward;
             }
 
@@ -304,6 +309,11 @@
             if (currentPlayer === botPlayer) {
                 makeBotMove();
             }
+        }
+
+        function playSound(audioElement) {
+            audioElement.currentTime = 0; // إعادة تشغيل الصوت من البداية إذا كان قيد التشغيل
+            audioElement.play();
         }
 
         cells.forEach(cell => cell.addEventListener('click', handleCellClick));
